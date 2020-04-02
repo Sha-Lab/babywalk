@@ -127,3 +127,25 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# tasks
+/tasks/R2R/data/*.json
+/tasks/R2R/plot*
+/tasks/R2R/results/
+/tasks/R2R/snapshots/
+/tasks/R2R/data/v1
+/tasks/R2R/*.swp
+/tasks/R2R/follower/
+/tasks/R2R/speaker/
+/tasks/R4R/data/*.json
+/tasks/R4R/plot*
+/tasks/R4R/results/
+/tasks/R4R/snapshots/
+/tasks/R4R/data/v1
+/tasks/R4R/*.swp
+/tasks/R4R/follower/
+/tasks/R4R/speaker/
+
+# intellij
+.idea/
+*.iml

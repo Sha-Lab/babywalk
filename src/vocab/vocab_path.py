@@ -1,0 +1,6 @@
+SUBTRAIN_VOCAB = 'src/vocab/vocab_data/sub_train_vocab.txt'
+TRAIN_VOCAB = 'src/vocab/vocab_data/train_vocab.txt'
+TRAINVAL_VOCAB = 'src/vocab/vocab_data/trainval_vocab.txt'
+NOUN_TRAIN = 'src/vocab/vocab_data/train_noun.txt'
+NOUN_PHRASE_TRAIN = 'src/vocab/vocab_data/train_spacy_noun_phrase.txt'
+GLOVE_PATH = 'src/vocab/vocab_data/train_glove.npy'

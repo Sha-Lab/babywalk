@@ -10,305 +10,323 @@ from collections import namedtuple
 from envs_utils import load_nav_graphs, structured_map
 from model.cuda import try_cuda
 
-WorldState = namedtuple("WorldState", ["scanId", "viewpointId", "viewIndex", "heading", "elevation"])
-angle_inc = np.pi / 6.
+ANGLE_INC = np.pi / 6.
+WorldState = namedtuple(
+  "WorldState",
+  ["scan_id", "viewpoint_id", "view_index", "heading", "elevation"]
+)
 
 
 class EnvBatch():
-    ''' A simple wrapper for a batch of MatterSim environments,
-        using discretized viewpoints and pretrained features '''
+  ''' A simple wrapper for a batch of MatterSim environments,
+      using discretized viewpoints and pretrained features,
+      using an adjacency dictionary to replace the MatterSim simulator
+  '''
+  
+  def __init__(self, adj_dict=None):
+    self.adj_dict = adj_dict
+    assert adj_dict is not None, "Error! No adjacency dictionary!"
+  
+  def get_start_state(self, scan_ids, viewpoint_ids, headings):
+    def f(scan_id, viewpoint_id, heading):
+      elevation = 0
+      view_index = (12 * round(elevation / ANGLE_INC + 1)
+                    + round(heading / ANGLE_INC) % 12)
+      return WorldState(scan_id=scan_id,
+                        viewpoint_id=viewpoint_id,
+                        view_index=view_index,
+                        heading=heading,
+                        elevation=elevation)
     
-    def __init__(self, batch_size, adj_dict=None):
-        self.batch_size = batch_size
-        self.angle_inc = np.pi / 6.
-        self.adj_dict = adj_dict
-        if adj_dict is None:
-            print("Error! Not load the adj dict!")
-            exit(0)
+    return structured_map(f, scan_ids, viewpoint_ids, headings)
+  
+  def get_adjs(self, world_states):
+    def f(world_state):
+      query = '_'.join([world_state.scan_id,
+                        world_state.viewpoint_id,
+                        str(world_state.view_index)])
+      return self.adj_dict[query]
     
-    def _get_adj(self, state):
-        query = '_'.join([state.scanId, state.viewpointId, str(state.viewIndex)])
-        adj_list = self.adj_dict[query]
-        return adj_list
+    return structured_map(f, world_states)
+  
+  def make_actions(self, world_states, actions, attrs):
+    def f(world_state, action, loc_attrs):
+      if action == 0:
+        return world_state
+      else:
+        loc_attr = loc_attrs[action]
+        return WorldState(scan_id=world_state.scan_id,
+                          viewpoint_id=loc_attr['nextViewpointId'],
+                          view_index=loc_attr['absViewIndex'],
+                          heading=(loc_attr['absViewIndex'] % 12) * ANGLE_INC,
+                          elevation=(loc_attr['absViewIndex'] // 12 - 1)
+                                    * ANGLE_INC)
     
-    def getStartState(self, scanIds, viewpointIds, headings):
-        def f(scanId, viewpointId, heading):
-            elevation = 0
-            viewIndex = (12 * round(elevation / self.angle_inc + 1) + round(heading / self.angle_inc) % 12)
-            return WorldState(scanId=scanId,
-                              viewpointId=viewpointId,
-                              viewIndex=viewIndex,
-                              heading=heading,
-                              elevation=elevation)
-        
-        return structured_map(f, scanIds, viewpointIds, headings)
-    
-    def getAdjs(self, world_states):
-        def f(world_state):
-            return self._get_adj(world_state)
-        
-        return structured_map(f, world_states)
-    
-    def makeActions(self, world_states, actions, attrs):
-        def f(world_state, action, loc_attrs):
-            if action == 0:
-                return world_state
-            else:
-                loc_attr = loc_attrs[action]
-                return WorldState(scanId=world_state.scanId,
-                                  viewpointId=loc_attr['nextViewpointId'],
-                                  viewIndex=loc_attr['absViewIndex'],
-                                  heading=(loc_attr['absViewIndex'] % 12) * self.angle_inc,
-                                  elevation=(loc_attr['absViewIndex'] // 12 - 1) * self.angle_inc)
-        
-        return structured_map(f, world_states, actions, attrs)
+    return structured_map(f, world_states, actions, attrs)
 
 
 class RoomEnv():
-    ''' Implements the Room to Room navigation task, using discretized viewpoints and pretrained features '''
+  ''' Implements the R2R (R4R, R6R, etc.) navigation task,
+      using discretized viewpoints and pretrained features.
+  '''
+  
+  @staticmethod
+  def load_adj_feature(adj_list_file):
+    with open(adj_list_file, 'r') as f:
+      adj_dict = json.load(f)
+    return adj_dict
+  
+  @staticmethod
+  def load_graphs():
+    ''' Load connectivity graph for each scan. '''
+    scans = []
+    for file in os.listdir("simulator/connectivity"):
+      if file.endswith(".json"):
+        scans.append(file.split('_')[0])
+    print('Loading navigation graphs for %d scans' % len(scans))
+    graphs = load_nav_graphs(scans)
+    paths = {}
+    matrix = {}
+    states_map = {}
+    distances = {}
+    for scan, G in graphs.items():  # compute all shortest paths
+      paths[scan] = dict(nx.all_pairs_dijkstra_path(G))
+      matrix[scan] = nx.to_numpy_matrix(G)
+      states_map[scan] = list(G.nodes)
+      distances[scan] = dict(nx.all_pairs_dijkstra_path_length(G))
+    return paths, states_map, distances
+  
+  @staticmethod
+  def make_state_embeddings(args, states_map, image_features_list):
+    state_embedding = {}
+    for scan, state_list in states_map.items():
+      embedding = np.zeros((len(state_list), args.num_views,
+                            args.mean_pooled_dim))
+      for i, state in enumerate(state_list):
+        fake_state = {'scan_id': scan,
+                      'viewpoint_id': state}
+        feature = [featurizer.get_features(fake_state)
+                   for featurizer in image_features_list][0]
+        embedding[i] = feature
+      state_embedding[scan] = torch.from_numpy(embedding).float()
+    return state_embedding
+  
+  @staticmethod
+  def build_viewpoint_loc_embedding(args, view_index):
+    """
+    Position embedding: heading 64D + elevation 64D
+    1) heading: [sin(heading) for _ in range(1, 33)] +
+                [cos(heading) for _ in range(1, 33)]
+    2) elevation: [sin(elevation) for _ in range(1, 33)] +
+                  [cos(elevation) for _ in range(1, 33)]
+    """
+    embedding = np.zeros((args.num_views, 128), np.float32)
+    for abs_view_index in range(args.num_views):
+      rel_view_index = (abs_view_index - view_index) % 12 \
+                       + (abs_view_index // 12) * 12
+      rel_heading = (rel_view_index % 12) * ANGLE_INC
+      rel_elevation = (rel_view_index // 12 - 1) * ANGLE_INC
+      embedding[abs_view_index, 0:32] = np.sin(rel_heading)
+      embedding[abs_view_index, 32:64] = np.cos(rel_heading)
+      embedding[abs_view_index, 64:96] = np.sin(rel_elevation)
+      embedding[abs_view_index, 96:] = np.cos(rel_elevation)
+    return torch.from_numpy(embedding).float()
+  
+  def __init__(self, args, paths, states_map, distances, state_embedding,
+               loc_embeddings, adj_dict):
+    self.env = EnvBatch(adj_dict=adj_dict)
+    self.margin = 3.0
+    self.paths = paths
+    self.states_map = states_map
+    self.distances = distances
+    self.state_embedding = state_embedding
+    self.loc_embeddings = loc_embeddings
+    self.padding_action = try_cuda(torch.zeros(args.action_embed_size))
+    self.padding_feature = try_cuda(torch.zeros(args.num_views,
+                                                args.action_embed_size))
+    self.shrink = 10  # shrink distance 10 times
+  
+  def _build_action_embedding(self, adj_loc_list, feature):
+    feature_adj = feature[[adj_dict['absViewIndex']
+                           for adj_dict in adj_loc_list]]
+    feature_adj[0] = 0
+    embedding = np.zeros((len(adj_loc_list), 128), np.float32)
+    for a, adj_dict in enumerate(adj_loc_list):
+      if a == 0:
+        continue
+      else:
+        rel_heading = adj_dict['rel_heading']
+        rel_elevation = adj_dict['rel_elevation']
+      embedding[a][0:32] = np.sin(rel_heading)
+      embedding[a][32:64] = np.cos(rel_heading)
+      embedding[a][64:96] = np.sin(rel_elevation)
+      embedding[a][96:] = np.cos(rel_elevation)
+    angle_embed = torch.from_numpy(embedding).float()
+    return try_cuda(torch.cat((feature_adj, angle_embed), dim=-1))
+  
+  def _build_feature_embedding(self, view_index, feature):
+    angle_embed = self.loc_embeddings[view_index]
+    return try_cuda(torch.cat((feature, angle_embed), dim=-1))
+  
+  def _shortest_path_action(self, state, adj_loc_list, goal_id):
+    ''' Determine next action on the shortest path to goal, for supervised training. '''
+    if state.viewpoint_id == goal_id:
+      return 0
+    for n_a, loc_attr in enumerate(adj_loc_list):
+      if loc_attr['nextViewpointId'] == goal_id:
+        return n_a
+    path = self.paths[state.scan_id][state.viewpoint_id][goal_id]
+    next_viewpoint_id = path[1]
+    for n_a, loc_attr in enumerate(adj_loc_list):
+      if loc_attr['nextViewpointId'] == next_viewpoint_id:
+        return n_a
     
-    @staticmethod
-    def load_adj_feature(adj_list_file):
-        with open(adj_list_file, 'r') as f:
-            adj_dict = json.load(f)
-        return adj_dict
-    
-    @staticmethod
-    def load_nav_graphs():
-        ''' Load connectivity graph for each scan, useful for reasoning about shortest paths '''
-        scans = []
-        for file in os.listdir("simulator/connectivity"):
-            if file.endswith(".json"):
-                scans.append(file.split('_')[0])
-        print('Loading navigation graphs for %d scans' % len(scans))
-        graphs = load_nav_graphs(scans)
-        paths = {}
-        matrix = {}
-        states_map = {}
-        distances = {}
-        for scan, G in graphs.items():  # compute all shortest paths
-            paths[scan] = dict(nx.all_pairs_dijkstra_path(G))
-            matrix[scan] = nx.to_numpy_matrix(G)
-            states_map[scan] = list(G.nodes)
-            distances[scan] = dict(nx.all_pairs_dijkstra_path_length(G))
-        return paths, states_map, distances
-    
-    @staticmethod
-    def make_state_embeddings(state_embedding_size, states_map, image_features_list):
-        state_embedding = {}
-        for scan, state_list in states_map.items():
-            embedding = np.zeros((len(state_list), 36, state_embedding_size))
-            for i, state in enumerate(state_list):
-                fake_state = {'scanId': scan,
-                              'viewpointId': state}
-                feature = [featurizer.get_features(fake_state) for featurizer in image_features_list][0]
-                embedding[i] = feature
-            state_embedding[scan] = try_cuda(torch.from_numpy(embedding).float())
-        return state_embedding
-    
-    @staticmethod
-    def build_viewpoint_loc_embedding(viewIndex):
-        """
-        Position embedding:
-        heading 64D + elevation 64D
-        1) heading: [sin(heading) for _ in range(1, 33)] +
-                    [cos(heading) for _ in range(1, 33)]
-        2) elevation: [sin(elevation) for _ in range(1, 33)] +
-                      [cos(elevation) for _ in range(1, 33)]
-        """
-        embedding = np.zeros((36, 128), np.float32)
-        for absViewIndex in range(36):
-            relViewIndex = (absViewIndex - viewIndex) % 12 + (absViewIndex // 12) * 12
-            rel_heading = (relViewIndex % 12) * angle_inc
-            rel_elevation = (relViewIndex // 12 - 1) * angle_inc
-            embedding[absViewIndex, 0:32] = np.sin(rel_heading)
-            embedding[absViewIndex, 32:64] = np.cos(rel_heading)
-            embedding[absViewIndex, 64:96] = np.sin(rel_elevation)
-            embedding[absViewIndex, 96:] = np.cos(rel_elevation)
-        return try_cuda(torch.from_numpy(embedding).float())
-    
-    def __init__(self, batch_size, paths, states_map, distances, state_embedding, loc_embeddings, adj_dict):
-        self.env = EnvBatch(batch_size, adj_dict=adj_dict)
-        self.margin = 3.0
-        self.batch_size = batch_size
-        self.paths = paths
-        self.states_map = states_map
-        self.distances = distances
-        self.state_embedding = state_embedding
-        self.loc_embeddings = loc_embeddings
-    
-    def _build_action_embedding(self, adj_loc_list, feature):
-        feature_adj = feature[[adj_dict['absViewIndex'] for adj_dict in adj_loc_list]]
-        feature_adj[0] = 0
-        embedding = np.zeros((len(adj_loc_list), 128), np.float32)
-        for a, adj_dict in enumerate(adj_loc_list):
-            if a == 0:
-                continue
-            else:
-                rel_heading = adj_dict['rel_heading']
-                rel_elevation = adj_dict['rel_elevation']
-            embedding[a][0:32] = np.sin(rel_heading)
-            embedding[a][32:64] = np.cos(rel_heading)
-            embedding[a][64:96] = np.sin(rel_elevation)
-            embedding[a][96:] = np.cos(rel_elevation)
-        return torch.cat((feature_adj, try_cuda(torch.from_numpy(embedding).float())), dim=-1)
-    
-    def _shortest_path_action(self, state, adj_loc_list, goalViewpointId):
-        '''
-        Determine next action on the shortest path to goal,
-        for supervised training.
-        '''
-        if state.viewpointId == goalViewpointId:
-            return 0
-        for n_a, loc_attr in enumerate(adj_loc_list):
-            if loc_attr['nextViewpointId'] == goalViewpointId:
-                return n_a
-        path = self.paths[state.scanId][state.viewpointId][goalViewpointId]
-        nextViewpointId = path[1]
-        for n_a, loc_attr in enumerate(adj_loc_list):
-            if loc_attr['nextViewpointId'] == nextViewpointId:
-                return n_a
-        
-        # Next nextViewpointId not found! This should not happen!
-        print('adj_loc_list:', adj_loc_list)
-        print('nextViewpointId:', nextViewpointId)
-        long_id = '{}_{}'.format(state.scanId, state.viewpointId)
-        print('longId:', long_id)
-        raise Exception('Bug: nextViewpointId not in adj_loc_list')
-    
-    def _observe(self, world_states, include_teacher=True, include_instruction=True,
-                 include_feature=True, step=None):
-        obs = []
-        for i, adj_loc_list in enumerate(self.env.getAdjs(world_states)):
-            assert len(self.batch) == self.batch_size
-            item = self.batch[i]
-            state = self.world_states[i]
-            ob = {
-                'scan': state.scanId,
-                'viewpoint': state.viewpointId,
-                'viewIndex': state.viewIndex,
-                'heading': state.heading,
-                'elevation': state.elevation,
-                'adj_loc_list': adj_loc_list,
-                'instr_id': item['instr_id']
-            }
-            if include_instruction:
-                ob['instr_encoding'] = item['instr_encoding']
-                ob['instructions'] = item['instructions']
-            if include_feature:
-                idx = self.states_map[state.scanId].index(state.viewpointId)
-                feature = self.state_embedding[state.scanId][idx]
-                feature_with_loc = torch.cat((feature, self.loc_embeddings[state.viewIndex]), dim=-1)
-                action_embedding = self._build_action_embedding(adj_loc_list, feature)
-                ob['feature'] = [feature_with_loc]
-                ob['action_embedding'] = action_embedding
-            if include_teacher:
-                ob['goal'] = item['path'][-1]
-                if step is not None and (step + 1) < len(item['path']):
-                    ob['teacher'] = item['path'][step + 1]
-                else:
-                    ob['teacher'] = item['path'][-1]
-                ob['teacher_action'] = self._shortest_path_action(state, adj_loc_list, ob['teacher'])
-            obs.append(ob)
-        return obs
-    
-    def get_starting_obs(self, instance_list, step=None):
-        scanIds = [item['scan'] for item in instance_list]
-        viewpointIds = [item['path'][0] for item in instance_list]
-        headings = [item['heading'] for item in instance_list]
-        self.world_states = self.env.getStartState(scanIds, viewpointIds, headings)
-        obs = self._observe(self.world_states, step=step)
-        return obs
-    
-    def reset(self, next_batch=None, step=None):
-        ''' Load a new minibatch / episodes. '''
-        if next_batch:
-            self.batch = next_batch
-        obs = self.get_starting_obs(self.batch, step=step)
-        return obs
-    
-    def step(self, obs, actions=None, step=None, include_instruction=True, reward_type='dis'):
-        '''
-        1. Take action (same interface as makeActions)
-        2. Make obs
-        3. Compute reward
-        4. Done or not
-        '''
-        if actions is None:
-            actions = [ob['teacher_action'] for ob in obs]
-        dist2goal = [self.distances[ob['scan']][ob['viewpoint']][ob['goal']] for ob in obs]
-        attrs = [ob['adj_loc_list'] for ob in obs]
-        self.world_states = self.env.makeActions(self.world_states, actions, attrs)
-        obs = self._observe(self.world_states, step=step, include_instruction=include_instruction)
-        dist2goal_new = [self.distances[ob['scan']][ob['viewpoint']][ob['goal']] for ob in obs]
-        shrink = 10
-        if reward_type == 'cls' or reward_type == 'dtw':
-            reward = [0 for _ in range(self.batch_size)]
+    # Next viewpoint_id not found! This should not happen!
+    print('adj_loc_list:', adj_loc_list)
+    print('next_viewpoint_id:', next_viewpoint_id)
+    print('longId:', '{}_{}'.format(state.scan_id, state.viewpoint_id))
+    raise Exception('Error: next_viewpoint_id not in adj_loc_list')
+  
+  def _observe(self, world_states, include_feature=True,
+               include_teacher=True, step=None):
+    """
+    Return the observations of a batch of states
+    :param world_states: states defined as a namedtuple
+    :param done: has done, no need to provide ob
+    :param include_feature: whether or not to return the pretrained features
+    :param include_teacher: whether or not to return a teacher viewpoint and
+                            teacher action (for supervision)
+    :param step: step number in the gold trajectory
+    :return: a list of observations, each is a dictionary
+    """
+    obs = []
+    for i, adj_loc_list in enumerate(self.env.get_adjs(world_states)):
+      item = self.batch[i]
+      state = self.world_states[i]
+      ob = {
+        'scan': state.scan_id,
+        'viewpoint': state.viewpoint_id,
+        'view_index': state.view_index,
+        'heading': state.heading,
+        'elevation': state.elevation,
+        'adj_loc_list': adj_loc_list,
+        'instr_id': item['instr_id']
+      }
+      if include_feature:
+        idx = self.states_map[state.scan_id].index(state.viewpoint_id)
+        feature = self.state_embedding[state.scan_id][idx]
+        feature_with_loc = self._build_feature_embedding(state.view_index,
+                                                         feature)
+        action_embedding = self._build_action_embedding(adj_loc_list, feature)
+        ob['feature'] = [feature_with_loc]
+        ob['action_embedding'] = action_embedding
+      if include_teacher:
+        ob['goal'] = item['path'][-1]
+        if step is not None and (step + 1) < len(item['path']):
+          ob['teacher'] = item['path'][step + 1]
         else:
-            reward = [(dist2goal[i] - dist2goal_new[i]) / shrink if action != 0 else int(dist2goal[i] < self.margin)
-                      for i, action in enumerate(actions)]
-        done = (np.array(actions) == 0).astype(np.uint8)
-        # obs, reward, done, info
-        return obs, np.array(reward), done
-    
-    def shortest_paths_to_goals(self, obs, max_steps):
-        all_obs = [[ob] for ob in obs]
-        all_actions = [[] for _ in obs]
-        ended = np.zeros(self.batch_size)
-        for t in range(max_steps):
-            actions = [ob['teacher_action'] for ob in obs]
-            for i, a in enumerate(actions):
-                if not ended[i]:
-                    all_actions[i].append(a)
-            obs, _, ended = self.step(obs, actions=actions, step=t + 1, include_instruction=False)
-            for i, ob in enumerate(obs):
-                if not ended[i] and t < max_steps - 1:
-                    all_obs[i].append(ob)
-            if ended.all():
-                break
-        return all_obs, all_actions
-    
-    def gold_obs_actions_and_instructions(self, batch, max_steps=100):
-        obs = self.reset(next_batch=batch, step=0)
-        path_obs, path_actions = self.shortest_paths_to_goals(obs, max_steps)
-        encoded_instructions = [item['instr_encoding'] for item in batch]
-        return path_obs, path_actions, encoded_instructions
-    
-    def get_dtw(self, scan, reference, prediction):
-        margin = 3.0
-        success = (self.distances[scan][prediction[-1]][reference[-1]] < margin)
-        dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
-        dtw_matrix[0][0] = 0
-        for i in range(1, len(prediction) + 1):
-            for j in range(1, len(reference) + 1):
-                best_previous_cost = min(
-                    dtw_matrix[i - 1][j], dtw_matrix[i][j - 1], dtw_matrix[i - 1][j - 1])
-                cost = self.distances[scan][prediction[i - 1]][reference[j - 1]]
-                dtw_matrix[i][j] = cost + best_previous_cost
-        dtw = dtw_matrix[len(prediction)][len(reference)]
-        ndtw = np.exp(-dtw / (margin * len(reference)))
-        return ndtw + success
-    
-    def get_cls(self, scan, reference, prediction):
-        decay = 3
-        success = (self.distances[scan][reference[-1]][prediction[-1]] < 3.0)
-        pc = 0
-        path_pl = 0
-        traj_pl = 0
-        for i, loc in enumerate(reference):
-            if i < len(reference) - 1:
-                path_pl += self.distances[scan][reference[i]][reference[i + 1]]
-            nearest = np.inf
-            for pred_loc in prediction:
-                if self.distances[scan][loc][pred_loc] < nearest:
-                    nearest = self.distances[scan][loc][pred_loc]
-            pc += np.exp(-nearest / decay)
-        pc /= len(reference)
-        epl = pc * path_pl
-        for i in range(len(prediction) - 1):
-            traj_pl += self.distances[scan][prediction[i]][prediction[i + 1]]
-        if epl == 0 and traj_pl == 0:
-            cls = 0
-        else:
-            cls = pc * epl / (epl + abs(epl - traj_pl))
-        return cls + success
+          ob['teacher'] = item['path'][-1]
+        ob['teacher_action'] = self._shortest_path_action(state, adj_loc_list,
+                                                          ob['teacher'])
+      obs.append(ob)
+    return obs
+  
+  def reset(self, next_batch, step=None):
+    ''' Load a new mini-batch and return the initial observation'''
+    self.batch = next_batch
+    scan_ids = [item['scan'] for item in next_batch]
+    viewpoint_ids = [item['path'][0] for item in next_batch]
+    headings = [item['heading'] for item in next_batch]
+    self.world_states = self.env.get_start_state(scan_ids, viewpoint_ids,
+                                                 headings)
+    obs = self._observe(self.world_states, step=step)
+    return obs
+  
+  def step(self, obs, actions, step=None):
+    ''' Take one step from the current state
+    :param obs: last observations
+    :param actions: current actions
+    :param step: step information for teacher action supervision
+    :return: current observations, and "done" (finish or not)
+    '''
+    attrs = [ob['adj_loc_list'] for ob in obs]
+    self.world_states = self.env.make_actions(self.world_states, actions,
+                                              attrs)
+    obs = self._observe(self.world_states, step=step)
+    done = (np.array(actions) == 0).astype(np.uint8)
+    return obs, done
+  
+  def _paths_to_goals(self, obs, max_steps):
+    all_obs = [[ob] for ob in obs]
+    all_actions = [[] for _ in obs]
+    ended = np.zeros(len(obs))
+    for t in range(max_steps):
+      actions = [ob['teacher_action'] for ob in obs]
+      for i, a in enumerate(actions):
+        if not ended[i]:
+          all_actions[i].append(a)
+      obs, ended = self.step(obs, actions, step=t + 1)
+      for i, ob in enumerate(obs):
+        if not ended[i] and t < max_steps - 1:
+          all_obs[i].append(ob)
+      if ended.all():
+        break
+    return all_obs, all_actions
+  
+  def gold_obs_actions_and_instructions(self, batch, max_steps=100):
+    obs = self.reset(batch, step=0)
+    path_obs, path_actions = self._paths_to_goals(obs, max_steps)
+    encoded_instructions = [item['instr_encoding'] for item in batch]
+    return path_obs, path_actions, encoded_instructions
+  
+  def length(self, scan, nodes):
+    return float(np.sum([self.distances[scan][edge[0]][edge[1]]
+                         for edge in zip(nodes[:-1], nodes[1:])]))
+  
+  def get_mix(self, scan, prediction, reference):
+    success = self.distances[scan][prediction[-1]][reference[-1]] < self.margin
+    pad = [0] * (len(prediction) - 1)
+    final = self.ndtw(scan, prediction, reference) * success \
+            + self.cls(scan, prediction, reference)
+    return pad + [final]
+  
+  def get_ndtw(self, scan, prediction, reference):
+    success = self.distances[scan][prediction[-1]][reference[-1]] < self.margin
+    pad = [0] * (len(prediction) - 1)
+    return pad + [self.ndtw(scan, prediction, reference) + success]
+  
+  def ndtw(self, scan, prediction, reference):
+    dtw_matrix = np.inf * np.ones((len(prediction) + 1, len(reference) + 1))
+    dtw_matrix[0][0] = 0
+    for i in range(1, len(prediction) + 1):
+      for j in range(1, len(reference) + 1):
+        best_previous_cost = min(dtw_matrix[i - 1][j],
+                                 dtw_matrix[i][j - 1],
+                                 dtw_matrix[i - 1][j - 1])
+        cost = self.distances[scan][prediction[i - 1]][reference[j - 1]]
+        dtw_matrix[i][j] = cost + best_previous_cost
+    dtw = dtw_matrix[len(prediction)][len(reference)]
+    ndtw = np.exp(-dtw / (self.margin * len(reference)))
+    return ndtw
+  
+  def get_cls(self, scan, prediction, reference):
+    success = self.distances[scan][reference[-1]][prediction[-1]] < self.margin
+    pad = [0] * (len(prediction) - 1)
+    return pad + [self.cls(scan, prediction, reference) + success]
+  
+  def cls(self, scan, prediction, reference):
+    coverage = np.mean([np.exp(
+      -np.min([self.distances[scan][u][v] for v in prediction]) / self.margin
+    ) for u in reference])
+    expected = coverage * self.length(scan, reference)
+    score = expected \
+            / (expected + np.abs(expected - self.length(scan, prediction)))
+    return coverage * score
+  
+  def get_dis(self, scan, prediction, reference):
+    goal = reference[-1]
+    success = self.distances[scan][goal][prediction[-1]] < self.margin
+    dis = [(self.distances[scan][goal][prediction[i + 1]]
+            - self.distances[scan][goal][prediction[i]]) / self.shrink
+           for i in range(len(prediction) - 1)]
+    return dis + [success]

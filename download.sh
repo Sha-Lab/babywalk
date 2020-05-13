@@ -13,6 +13,9 @@ mkdir -p simulator/resnet_feature/
 wget https://www.dropbox.com/s/715bbj8yjz32ekf/ResNet-152-imagenet.zip?dl=1 -O simulator/resnet_feature/ResNet-152-imagenet.zip
 unzip simulator/resnet_feature/ResNet-152-imagenet.zip -d simulator/resnet_feature
 
+# adjacency dict
+wget https://www.dropbox.com/s/6a076293c3o77gi/total_adj_list.json?dl=0 -O simulator/total_adj_list.json
+
 # training/eval data
 mkdir -p tasks/R2R/data
 mkdir -p tasks/R4R/data
@@ -29,3 +32,15 @@ unzip tasks/R4R/data/R4R_data.zip -d tasks/R4R/data
 unzip tasks/R6R/data/R6R_data.zip -d tasks/R6R/data
 unzip tasks/R8R/data/R8R_data.zip -d tasks/R8R/data
 unzip tasks/R2T8/data/R2T8_data.zip -d tasks/R2T8/data
+
+# download speaker model
+mkdir -p tasks/R2R/speaker/snapshots
+mkdir -p tasks/R4R/speaker/snapshots
+mkdir -p tasks/R6R/speaker/snapshots
+mkdir -p tasks/R8R/speaker/snapshots
+wget https://www.dropbox.com/s/65z90zktd7w6dtz/speaker.zip?dl=0 -O tasks/R2R/speaker/snapshots/speaker.zip
+wget https://www.dropbox.com/s/q223j0vn1ofd89z/speaker.zip?dl=0 -O tasks/R4R/speaker/snapshots/speaker.zip
+unzip tasks/R2R/speaker/snapshots/speaker.zip -d tasks/R2R/speaker/snapshots
+unzip tasks/R4R/speaker/snapshots/speaker.zip -d tasks/R4R/speaker/snapshots
+cp tasks/R4R/speaker/snapshots/* tasks/R6R/speaker/snapshots
+cp tasks/R6R/speaker/snapshots/* tasks/R8R/speaker/snapshots

@@ -10,7 +10,8 @@ wget https://www.dropbox.com/s/3s2plada1vttxuv/trainval_vocab.txt?dl=0 -O src/vo
 
 # resnet feature
 mkdir -p simulator/resnet_feature/
-wget https://www.dropbox.com/s/715bbj8yjz32ekf/ResNet-152-imagenet.zip?dl=1 -O simulator/resnet_feature/ResNet-152-imagenet.zip
+curl -c /tmp/cookies "https://drive.google.com/uc?export=download&id=1HjEH3EQt-aHSjolg0VnX_YF1UEHiXLfT" > /tmp/intermezzo.html
+curl -L -b /tmp/cookies "https://drive.google.com$(cat /tmp/intermezzo.html | grep -Po 'uc-download-link" [^>]* href="\K[^"]*' | sed 's/\&amp;/\&/g')" > simulator/resnet_feature/ResNet-152-imagenet.zip
 unzip simulator/resnet_feature/ResNet-152-imagenet.zip -d simulator/resnet_feature
 
 # adjacency dict

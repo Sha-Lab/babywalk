@@ -9,6 +9,10 @@ Wang Zhu*, Hexiang Hu*, Jiacheng Chen, Zhiwei Deng, Vihan Jain, Eugene Ie, Fei S
 
 [[arXiv](http://arxiv.org/abs/2005.04625)] [[GitHub](https://github.com/Sha-Lab/babywalk)]
 
+## Abstract
+Learning to follow instructions is of fundamental importance to autonomous agents for vision-and-language navigation (VLN). In this paper, we study how an agent can navigate long paths when learning from a corpus that consists of shorter ones. We show that existing state-of-the-art agents do not generalize well. To this end, we propose BabyWalk, a new VLN agent that is learned to navigate by decomposing long instructions into shorter ones (BabySteps) and completing them sequentially. A special design memory buffer is used by the agent to turn its past experiences into contexts for future steps. The learning process is composed of two phases. In the first phase, the agent uses imitation learning from demonstration to accomplish BabySteps. In the second phase, the agent uses curriculum-based reinforcement learning to maximize rewards on navigation tasks with increasingly longer instructions. We create two new benchmark datasets (of long navigation tasks) and use them in conjunction with existing ones to examine BabyWalk's generalization ability. Empirical results show that BabyWalk achieves state-of-the-art results on several metrics, in particular, is able to follow long instructions better. 
+<br> <br>
+<img src="teaser/babywalk_curriculum.jpg" width="100%">
 
 ## Installation
 
@@ -128,15 +132,15 @@ chmod +x download_model.sh
 **SDTW**
 | Trained  | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
 |:--------:|:--------:|:--------:|:--------:|:--------:|
-|   R2R    | **36.9** |   13.8   |   11.2   |   9.8    |
-|   R4R    |   27.8   | **17.3** | **13.6** | **11.1** |
+|   R2R    |   36.9   |   13.8   |   11.2   |   9.8    |
+|   R4R    |   27.8   |   17.3   |   13.6   |   11.1   |
 |   R6R    |   25.4   |   15.1   |   11.8   |   9.9    |
 |   R8R    |   26.2   |   15.2   |   11.8   |   10.1   |
 
 **CLS**
 | Trained  | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
 |:--------:|:--------:|:--------:|:--------:|:--------:|
-|   R2R    | **54.4** | **51.0** | **49.0** | **48.7** |
+|   R2R    |   54.4   |   51.0   |   49.0   |   48.7   |
 |   R4R    |   50.4   |   49.4   |   47.2   |   46.0   |
 |   R6R    |   50.0   |   48.6   |   47.4   |   46.3   |
 |   R8R    |   49.3   |   48.5   |   46.6   |   46.4   |

@@ -149,21 +149,12 @@ chmod +x download_model.sh
 
 Please citing the follow BibTex entry if you are using any content from this repository:
 ```
-@inproceedings{zhu-etal-2020-babywalk,
+@inproceedings{zhu2020babywalk,
     title = "{B}aby{W}alk: Going Farther in Vision-and-Language Navigation by Taking Baby Steps",
-    author = "Zhu, Wang  and
-      Hu, Hexiang  and
-      Chen, Jiacheng  and
-      Deng, Zhiwei  and
-      Jain, Vihan  and
-      Ie, Eugene  and
-      Sha, Fei",
+    author = "Zhu, Wang and Hu, Hexiang and Chen, Jiacheng and Deng, Zhiwei and Jain, Vihan and Ie, Eugene and Sha, Fei",
     booktitle = "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
-    month = jul,
     year = "2020",
-    address = "Online",
     publisher = "Association for Computational Linguistics",
-    url = "https://www.aclweb.org/anthology/2020.acl-main.229",
     pages = "2539--2556",
 }
 ```

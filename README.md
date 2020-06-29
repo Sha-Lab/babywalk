@@ -110,7 +110,7 @@ CUDA_VISIBLE_DEVICES=0 python src/val_follower.py \
     --split_postfix "_landmark" \
     --one_by_one \
     --one_by_one_mode "landmark" \
-    --model_name "follower_bbw"
+    --model_name "follower_bbw" \
     --history \
     --follower_prefix "tasks/R2R/follower/snapshots/best_model"
 ```
@@ -128,22 +128,27 @@ CUDA_VISIBLE_DEVICES=0 python src/val_follower.py \
 chmod +x download_model.sh
 ./download_model.sh
 ```
-### Performance of our models
-**SDTW**
-| Trained  | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
-|:--------:|:--------:|:--------:|:--------:|:--------:|
-|   R2R    |   36.9   |   13.8   |   11.2   |   9.8    |
-|   R4R    |   27.8   |   17.3   |   13.6   |   11.1   |
-|   R6R    |   25.4   |   15.1   |   11.8   |   9.9    |
-|   R8R    |   26.2   |   15.2   |   11.8   |   10.1   |
+### Performance comparison on SDTW
+**R4R**
+| Model               | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
+|:-------------------:|:--------:|:--------:|:--------:|:--------:|
+| SF                  |   14.8   |   9.2    |   5.2    |   5.0    |
+| RCM(FIDELITY)       |   18.3   |   13.7   |   7.9    |   6.1    |
+| REGRETFUL           |   13.4   |   13.5   |   7.5    |   5.6    |
+| FAST                |   14.2   |   15.5   |   7.7    |   6.3    |
+| BABYWALK            |   27.8   |   17.3   |   13.1   |   11.5   |
+| BABYWALK(COGROUND)  |   31.6   |   20.0   |   15.9   |   13.9   |
 
-**CLS**
-| Trained  | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
-|:--------:|:--------:|:--------:|:--------:|:--------:|
-|   R2R    |   54.4   |   51.0   |   49.0   |   48.7   |
-|   R4R    |   50.4   |   49.4   |   47.2   |   46.0   |
-|   R6R    |   50.0   |   48.6   |   47.4   |   46.3   |
-|   R8R    |   49.3   |   48.5   |   46.6   |   46.4   |
+
+**R2R**
+| Model               | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
+|:-------------------:|:--------:|:--------:|:--------:|:--------:|
+| SF                  |   27.2   |   6.7    |   7.2    |   3.8    |
+| RCM(FIDELITY)       |   34.4   |   7.2    |   8.4    |   4.3    |
+| REGRETFUL           |   40.6   |   9.8    |   6.8    |   2.4    |
+| FAST                |   45.4   |   7.2    |   8.5    |   2.4    |
+| BABYWALK            |   36.9   |   13.8   |   11.2   |   9.8    |
+
 
 # Citation 
 

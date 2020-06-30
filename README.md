@@ -129,7 +129,7 @@ chmod +x download_model.sh
 ./download_model.sh
 ```
 ### Performance comparison on SDTW
-**R4R**
+**Models trained on R4R**
 | Model               | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
 |:-------------------:|:--------:|:--------:|:--------:|:--------:|
 | SF                  |   14.8   |   9.2    |   5.2    |   5.0    |
@@ -137,17 +137,17 @@ chmod +x download_model.sh
 | REGRETFUL           |   13.4   |   13.5   |   7.5    |   5.6    |
 | FAST                |   14.2   |   15.5   |   7.7    |   6.3    |
 | BABYWALK            |   27.8   |   17.3   |   13.1   |   11.5   |
-| BABYWALK(COGROUND)  |   31.6   |   20.0   |   15.9   |   13.9   |
+| BABYWALK(COGROUND)  |   ***31.6***   |   ***20.0***   |   ***15.9***   |   ***13.9***   |
 
 
-**R2R**
+**Models trained on R2R**
 | Model               | Eval R2R | Eval R4R | Eval R6R | Eval R8R |
 |:-------------------:|:--------:|:--------:|:--------:|:--------:|
 | SF                  |   27.2   |   6.7    |   7.2    |   3.8    |
 | RCM(FIDELITY)       |   34.4   |   7.2    |   8.4    |   4.3    |
 | REGRETFUL           |   40.6   |   9.8    |   6.8    |   2.4    |
 | FAST                |   45.4   |   7.2    |   8.5    |   2.4    |
-| BABYWALK            |   36.9   |   13.8   |   11.2   |   9.8    |
+| BABYWALK            |   36.9   |   ***13.8***   |   ***11.2***   |   ***9.8***    |
 
 
 # Citation 

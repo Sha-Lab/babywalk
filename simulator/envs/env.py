@@ -292,7 +292,7 @@ class RoomEnv():
   
   def get_ndtw(self, scan, prediction, reference):
     success = self.distances[scan][prediction[-1]][reference[-1]] < self.margin
-    pad = [0] * (len(prediction) - 1)
+    pad = [0] * (len(prediction) - 2)
     return pad + [self.ndtw(scan, prediction, reference) + success]
   
   def ndtw(self, scan, prediction, reference):
@@ -311,7 +311,7 @@ class RoomEnv():
   
   def get_cls(self, scan, prediction, reference):
     success = self.distances[scan][reference[-1]][prediction[-1]] < self.margin
-    pad = [0] * (len(prediction) - 1)
+    pad = [0] * (len(prediction) - 2)
     return pad + [self.cls(scan, prediction, reference) + success]
   
   def cls(self, scan, prediction, reference):
@@ -326,7 +326,7 @@ class RoomEnv():
   def get_dis(self, scan, prediction, reference):
     goal = reference[-1]
     success = self.distances[scan][goal][prediction[-1]] < self.margin
-    dis = [(self.distances[scan][goal][prediction[i + 1]]
-            - self.distances[scan][goal][prediction[i]]) / self.shrink
+    dis = [(self.distances[scan][goal][prediction[i]]
+            - self.distances[scan][goal][prediction[i + 1]]) / self.shrink
            for i in range(len(prediction) - 1)]
-    return dis + [success]
+    return dis[:-1] + [success]

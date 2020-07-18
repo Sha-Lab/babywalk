@@ -292,10 +292,10 @@ class Seq2SeqFollower(object):
         follower_results, _ = \
           self._rollout(batch[i], feedback, reward_flag=True, history=history,
                         exp_forget=exp_forget)
-        for i, result in enumerate(follower_results):
-          result['reward'] = self._get_reward(batch['scan'],
+        for j, result in enumerate(follower_results):
+          result['reward'] = self._get_reward(batch[i][j]['scan'],
                                               result['trajectory'],
-                                              batch['path'], reward_type)
+                                              batch[i][j]['path'], reward_type)
         ext_reward_cache.append([f_result['reward'][-1]
                                  for f_result in follower_results])
         follower_results_cache.append(follower_results)

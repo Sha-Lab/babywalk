@@ -43,13 +43,13 @@ Here we take training on R2R as an example, using BABYWALK.
 CUDA_VISIBLE_DEVICES=0 python src/train_follower.py \
     --split_postfix "_landmark" \
     --task_name R2R \
-    --n_iters 30000 \
+    --n_iters 50000 \
     --model_name "follower_bbw" \
     --il_mode "landmark_split" \
     --one_by_one \
     --one_by_one_mode "landmark" \
     --history \
-    --log_every 1000
+    --log_every 100
 ```
 
 ### Training with CRL
@@ -63,7 +63,7 @@ CUDA_VISIBLE_DEVICES=0 python src/train_follower.py \
     --one_by_one \
     --one_by_one_mode "landmark" \
     --history \
-    --log_every 500 \
+    --log_every 100 \
     --reward \
     --reward_type "cls" \
     --batch_size 64 \

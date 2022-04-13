@@ -35,6 +35,8 @@ After this step, check
 + `src/vocab/vocab_data` should contain vocabulary and its glove embedding files `train_vocab.txt` and `train_glove.npy`.
 + `tasks/` should contain `R2R`, `R4R`, `R6R`, `R8R`, `R2T8`, each which a data folder in it containing training/evaluation data.
 
+**Updates**: The old link for the ResNet feature is expired. Please see [here](https://drive.google.com/file/d/1HjEH3EQt-aHSjolg0VnX_YF1UEHiXLfT/view?usp=sharing) for the new link and the additional [**landmark alignment code**](https://drive.google.com/file/d/1soXYE-IMveMpvjAi6lNSpJURE3B4IYk3/view?usp=sharing).
+
 ## Training and evaluation
 Here we take training on R2R as an example, using BABYWALK.
 
